@@ -71,7 +71,11 @@ async def encrypt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     html_content = ' '.join(context.args)
     encrypted = encrypt_html(html_content)
     if encrypted:
-        await update.message.reply_text(f"🔐 Encrypted:\n\n{encrypted}")
+        if len(encrypted) > 4000:
+            for i in range(0, len(encrypted), 4000):
+                await update.message.reply_text(f"🔐 {encrypted[i:i+4000]}")
+        else:
+            await update.message.reply_text(f"🔐 Encrypted:\n\n{encrypted}")
     else:
         await update.message.reply_text("❌ Encryption failed")
 
@@ -82,7 +86,11 @@ async def decrypt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     encrypted_content = ' '.join(context.args)
     decrypted = decrypt_html(encrypted_content)
     if decrypted:
-        await update.message.reply_text(f"🔓 Decrypted:\n\n{decrypted}")
+        if len(decrypted) > 4000:
+            for i in range(0, len(decrypted), 4000):
+                await update.message.reply_text(f"🔓 {decrypted[i:i+4000]}")
+        else:
+            await update.message.reply_text(f"🔓 Decrypted:\n\n{decrypted}")
     else:
         await update.message.reply_text("❌ Decryption failed")
 
@@ -104,13 +112,87 @@ async def deobfuscate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     obfuscated = ' '.join(context.args)
     deobfuscated = deobfuscate_html(obfuscated)
     if deobfuscated:
-        await update.message.reply_text(f"✨ Deobfuscated:\n\n{deobfuscated}")
+        if len(deobfuscated) > 4000:
+            for i in range(0, len(deobfuscated), 4000):
+                await update.message.reply_text(f"✨ {deobfuscated[i:i+4000]}")
+        else:
+            await update.message.reply_text(f"✨ Deobfuscated:\n\n{deobfuscated}")
     else:
         await update.message.reply_text("❌ Deobfuscation failed")
 
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         file = await update.message.document.get_file()
+        file_content = await file.download_as_bytearray()
+        content = file_content.decode('utf-8', errors='ignore')
+        
+        keyboard = [
+            [InlineKeyboardButton("🔐 Encrypt", callback_data="encrypt_file"),
+             InlineKeyboardButton("🔓 Decrypt", callback_data="decrypt_file")],
+            [InlineKeyboardButton("🔀 Obfuscate", callback_data="obfuscate_file"),
+             InlineKeyboardButton("✨ Deobfuscate", callback_data="deobfuscate_file")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            f"📄 File uploaded!\nChoose an action:",
+            reply_markup=reply_markup
+        )
+        context.user_data['file_content'] = content
+    except Exception as e:
+        logger.error(f"File handling error: {e}")
+        await update.message.reply_text("❌ Error processing file")
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    content = context.user_data.get('file_content')
+    if not content:
+        await query.edit_message_text("❌ No file found. Upload again.")
+        return
+    
+    action = query.data
+    if action == "encrypt_file":
+        result = encrypt_html(content)
+        label = "🔐 Encrypted"
+    elif action == "decrypt_file":
+        result = decrypt_html(content)
+        label = "🔓 Decrypted"
+    elif action == "obfuscate_file":
+        result = obfuscate_html(content)
+        label = "🔀 Obfuscated"
+    elif action == "deobfuscate_file":
+        result = deobfuscate_html(content)
+        label = "✨ Deobfuscated"
+    
+    if result:
+        await query.edit_message_text(f"{label}:\n\n{result[:4000]}")
+    else:
+        await query.edit_message_text("❌ Operation failed")
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.error(f"Error: {context.error}")
+    if update and update.effective_message:
+        await update.effective_message.reply_text("❌ An error occurred")
+
+def main():
+    if not TOKEN:
+        logger.error("BOT_TOKEN not set!")
+        return
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("encrypt", encrypt))
+    app.add_handler(CommandHandler("decrypt", decrypt))
+    app.add_handler(CommandHandler("obfuscate", obfuscate))
+    app.add_handler(CommandHandler("deobfuscate", deobfuscate))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
+    app.add_handler(CallbackQueryHandler(button_callback))
+    app.add_error_handler(error_handler)
+    logger.info("Bot started!")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+if __name__ == "__main__":
+    main()        file = await update.message.document.get_file()
         file_content = await file.download_as_bytearray()
         content = file_content.decode('utf-8', errors='ignore')
         
